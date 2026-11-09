@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>結業證書套印平台</title>
+<meta name="description" content="台灣資訊教育發展協會 — 兒童程式課程結業證書批次套印工具">
+<meta name="theme-color" content="#0b8f7f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="證書套印">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="assets/icon-192.png" alt="" width="36" height="36">
+    <div>
+      <h1>結業證書套印平台</h1>
+      <p>社團法人台灣資訊教育發展協會</p>
+    </div>
+  </div>
+  <div id="fontStatus" class="status loading" role="status">字型載入中…</div>
+</header>
+
+<main class="layout">
+  <!-- 左：資料 -->
+  <section class="panel data-panel" aria-label="套印資料">
+    <h2><span class="step">1</span>學生名單</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" class="tab active" data-tab="manual" aria-selected="true">手動輸入</button>
+      <button role="tab" class="tab" data-tab="file" aria-selected="false">匯入 CSV / Excel</button>
+    </div>
+
+    <div class="tabpane" id="pane-manual">
+      <label class="field">
+        <span class="label">學生姓名（可多筆）<button type="button" class="help" data-help="names" aria-label="說明">?</button></span>
+        <textarea id="namesInput" rows="5" placeholder="王小明&#10;陳美美&#10;林大同"></textarea>
+        <small class="hint">每行一位，也可用逗號、頓號或空白分隔　<b id="namesCount">0</b> 位</small>
+      </label>
+    </div>
+
+    <div class="tabpane hidden" id="pane-file">
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.ods,.txt" hidden>
+        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path fill="currentColor" d="M12 3l5 5h-3v6h-4V8H7l5-5zm-7 14h14v3H5v-3z"/></svg>
+        <strong>點此選擇檔案</strong><span>或將 CSV / Excel 拖曳到這裡</span>
+      </label>
+      <div class="row-btns">
+        <button type="button" class="btn ghost small" id="tplCsv">下載 CSV 範本</button>
+        <button type="button" class="btn ghost small" id="tplXlsx">下載 Excel 範本</button>
+        <button type="button" class="help" data-help="file" aria-label="說明">?</button>
+      </div>
+      <p id="fileInfo" class="hint"></p>
+    </div>
+
+    <h2><span class="step">2</span>課程資料 <small>（同一批共用）</small></h2>
+    <label class="field">
+      <span class="label">單位名稱<button type="button" class="help" data-help="unit" aria-label="說明">?</button></span>
+      <input id="unitInput" type="text" placeholder="例：喵喵國小" autocomplete="off">
+    </label>
+    <label class="field">
+      <span class="label">授課期程<button type="button" class="help" data-help="period" aria-label="說明">?</button></span>
+      <input id="periodInput" type="text" placeholder="例：115/3/1~115/6/30" autocomplete="off" inputmode="text">
+      <small class="hint parsed" id="periodParsed"></small>
+    </label>
+    <label class="field">
+      <span class="label">課程名稱<button type="button" class="help" data-help="course" aria-label="說明">?</button></span>
+      <input id="courseInput" type="text" placeholder="例：Minecraft 程式設計進階班" autocomplete="off">
+    </label>
+    <label class="field">
+      <span class="label">發證日期<button type="button" class="help" data-help="issue" aria-label="說明">?</button></span>
+      <div class="inline">
+        <input id="issueInput" type="text" placeholder="例：115/6/30" autocomplete="off">
+        <button type="button" class="btn ghost small" id="todayBtn">今天</button>
+      </div>
+      <small class="hint parsed" id="issueParsed"></small>
+    </label>
+  </section>
+
+  <!-- 右：預覽與輸出 -->
+  <section class="panel preview-panel" aria-label="預覽與輸出">
+    <h2><span class="step">3</span>預覽 <small id="previewWho"></small></h2>
+    <div class="preview-wrap">
+      <canvas id="preview" aria-label="證書預覽"></canvas>
+      <div class="pv-nav">
+        <button type="button" class="nav-btn" id="prevBtn" aria-label="上一位">‹</button>
+        <span id="pvIndex">0 / 0</span>
+        <button type="button" class="nav-btn" id="nextBtn" aria-label="下一位">›</button>
+      </div>
+    </div>
+    <ul id="warnings" class="warnings"></ul>
+
+    <h2><span class="step">4</span>輸出 PDF</h2>
+    <div class="out-btns">
+      <button type="button" class="btn primary" id="btnSingle">單張：下載目前這位</button>
+      <button type="button" class="btn primary alt" id="btnMerged">批次：合併成一份 PDF</button>
+      <button type="button" class="btn ghost" id="btnZip">批次：每人一份（ZIP）</button>
+    </div>
+    <div id="lastFile" class="lastfile hidden"></div>
+
+    <details class="list-box" open>
+      <summary>名單（<span id="listCount">0</span>）— 點選可預覽、單獨下載</summary>
+      <ol id="studentList" class="student-list"></ol>
+    </details>
+  </section>
+</main>
+
+<!-- 說明視窗 -->
+<dialog id="helpDlg" class="dlg">
+  <form method="dialog">
+    <h3 id="helpTitle"></h3>
+    <div id="helpBody"></div>
+    <div class="dlg-btns">
+      <button type="button" class="btn ghost small hidden" id="helpApply">填入範例</button>
+      <button class="btn primary small" value="close">知道了</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 進度 -->
+<div id="progress" class="progress hidden" role="alertdialog" aria-live="polite">
+  <div class="progress-card">
+    <p id="progText">產生中…</p>
+    <div class="bar"><i id="progBar"></i></div>
+    <button type="button" class="btn ghost small" id="progCancel">取消</button>
+  </div>
+</div>
+
+<script src="js/layout.js"></script>
+<script src="js/data.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

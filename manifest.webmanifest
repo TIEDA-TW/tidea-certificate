@@ -1,0 +1,15 @@
+{
+  "name": "結業證書套印平台",
+  "short_name": "證書套印",
+  "description": "台灣資訊教育發展協會 兒童程式課程結業證書套印",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f7f6",
+  "theme_color": "#0b8f7f",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
