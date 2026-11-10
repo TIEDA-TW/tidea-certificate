@@ -34,6 +34,16 @@ button, input, textarea { font: inherit; color: inherit; }
 .brand img { border-radius: 9px; background: #fff; flex: none; }
 .brand h1 { font-size: 1.15rem; margin: 0; letter-spacing: .04em; }
 .brand p { margin: 0; font-size: .78rem; opacity: .85; }
+.course-pick { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.course-pick span { font-size: .82rem; opacity: .9; white-space: nowrap; }
+.course-pick select {
+  appearance: none; -webkit-appearance: none; border: 0; border-radius: 10px; min-height: 40px; max-width: 360px;
+  padding: 8px 34px 8px 12px; font-size: 16px; font-weight: 600; color: var(--teal-d); cursor: pointer;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2308695d' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15); text-overflow: ellipsis;
+}
+.course-pick select:focus-visible { outline: 3px solid var(--gold); }
+input[type=text]:disabled { background: #f1f5f4; color: var(--muted); }
 .status { font-size: .8rem; padding: 4px 10px; border-radius: 99px; background: rgba(255,255,255,.18); white-space: nowrap; }
 .status.ready { background: rgba(255,255,255,.95); color: var(--teal-d); }
 .status.error { background: #ffe1d6; color: #9c2b00; }
@@ -148,6 +158,11 @@ textarea { resize: vertical; min-height: 110px; }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; padding: 12px 12px 32px; gap: 12px; }
   .preview-panel { position: static; }
+}
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; }
+  .course-pick { order: 3; width: 100%; margin-left: 0; }
+  .course-pick select { flex: 1; min-width: 0; width: 100%; max-width: none; }
 }
 @media (max-width: 560px) {
   .topbar { padding-left: 16px; padding-right: 16px; }
