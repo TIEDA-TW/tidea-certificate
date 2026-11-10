@@ -1,10 +1,10 @@
-/* 離線快取：首次開啟後，字型與所有模組皆存在本機，之後開啟幾乎瞬間可用 */
-const VERSION = 'cert-v1';
+/* 離線快取（其他課程底圖第一次使用時自動快取）：首次開啟後，字型與所有模組皆存在本機，之後開啟幾乎瞬間可用 */
+const VERSION = 'cert-v2-multi';
 const CORE = [
-  './', 'index.html', 'css/style.css', 'js/layout.js', 'js/data.js', 'js/pdf.js', 'js/app.js',
-  'manifest.webmanifest', 'assets/bg-preview.jpg', 'assets/cmap.json', 'assets/icon-192.png',
+  './', 'index.html', 'css/style.css', 'js/courses.js', 'js/layout.js', 'js/data.js', 'js/pdf.js', 'js/app.js',
+  'manifest.webmanifest', 'assets/courses/minecraft-preview.jpg', 'assets/cmap.json', 'assets/icon-192.png',
 ];
-const LAZY = ['assets/font.ttf', 'assets/bg.jpg', 'vendor/pdf-lib.min.js', 'vendor/fontkit.umd.min.js', 'vendor/jszip.min.js', 'vendor/xlsx.full.min.js'];
+const LAZY = ['assets/font.ttf', 'assets/courses/minecraft.jpg', 'vendor/pdf-lib.min.js', 'vendor/fontkit.umd.min.js', 'vendor/jszip.min.js', 'vendor/xlsx.full.min.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(CORE).then(() => c.addAll(LAZY).catch(() => {}))).then(() => self.skipWaiting()));

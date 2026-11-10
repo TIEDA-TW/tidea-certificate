@@ -23,6 +23,10 @@
       <p>社團法人台灣資訊教育發展協會</p>
     </div>
   </div>
+  <label class="course-pick">
+    <span>證書種類</span>
+    <select id="courseSelect" aria-label="選擇要套印的課程證書"></select>
+  </label>
   <div id="fontStatus" class="status loading" role="status">字型載入中…</div>
 </header>
 
@@ -59,8 +63,9 @@
 
     <h2><span class="step">2</span>課程資料 <small>（同一批共用）</small></h2>
     <label class="field">
-      <span class="label">單位名稱<button type="button" class="help" data-help="unit" aria-label="說明">?</button></span>
+      <span class="label"><span id="unitLabel">單位名稱</span><button type="button" class="help" data-help="unit" aria-label="說明">?</button></span>
       <input id="unitInput" type="text" placeholder="例：喵喵國小" autocomplete="off">
+      <small class="hint" id="unitHint"></small>
     </label>
     <label class="field">
       <span class="label">授課期程<button type="button" class="help" data-help="period" aria-label="說明">?</button></span>
@@ -70,6 +75,7 @@
     <label class="field">
       <span class="label">課程名稱<button type="button" class="help" data-help="course" aria-label="說明">?</button></span>
       <input id="courseInput" type="text" placeholder="例：Minecraft 程式設計進階班" autocomplete="off">
+      <small class="hint" id="courseHint"></small>
     </label>
     <label class="field">
       <span class="label">發證日期<button type="button" class="help" data-help="issue" aria-label="說明">?</button></span>
@@ -130,6 +136,7 @@
   </div>
 </div>
 
+<script src="js/courses.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/data.js"></script>
 <script src="js/pdf.js"></script>
