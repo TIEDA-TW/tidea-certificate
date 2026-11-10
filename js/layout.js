@@ -1,23 +1,11 @@
-/* 證書版面引擎：所有座標以底圖原始像素 (3627 x 2599) 為單位
- * layoutCertificate(data) → [{ch, x, y(基線), size, color}]
- * 預覽(canvas)與 PDF(pdf-lib) 共用同一份排版結果，確保所見即所得。 */
+/* 證書版面引擎（多課程）
+ * layoutCertificate(data, course) → [{ch, x, y(基線), size, color}]
+ * 座標以各課程底圖的原始像素為單位；預覽(canvas)與 PDF(pdf-lib) 共用同一份排版結果。 */
 (function (global) {
   'use strict';
 
-  const W = 3627, H = 2599;
   const FONT = 'WHTeMing';
   const FALLBACK = '"Noto Serif TC","PMingLiU","MingLiU","Songti TC",serif';
-  const BLACK = '#000000', WHITE = '#ffffff';
-
-  // 版面區塊設定（依範本量測）
-  const CFG = {
-    unit:  { cx: 2190, cy: 456, maxW: 880, size: 92, minSize: 48, color: WHITE },
-    name:  { cx: 1890, cy: 1045, maxW: 1240, size: 220, minSize: 110, color: BLACK },
-    body:  { left: 453, right: 3167, baseline1: 1474, size: 85, minSize: 72, lineGap: 1.435, indent: 2, color: BLACK },
-    issue: { cx: 2000, baseline: 2296, size: 72, color: BLACK },
-  };
-
-  const BODY_TAIL = '」學習課程，學會更深入的程式編程，具備挑戰微軟邁客盃大賽的程式素養，期待同學繼續加油，創造更精進的程式設計。';
 
   let mctx = null;
   const wCache = new Map();
@@ -29,12 +17,11 @@
   }
   function fontStr(size) { return `${size}px "${FONT}",${FALLBACK}`; }
   function cw(ch, size) {
-    const k = ch;
-    let w = wCache.get(k);
+    let w = wCache.get(ch);
     if (w === undefined) {
       const c = ctx(); c.font = fontStr(100);
       w = c.measureText(ch).width / 100;
-      wCache.set(k, w);
+      wCache.set(ch, w);
     }
     return w * size;
   }
@@ -46,70 +33,83 @@
   }
   const strW = (s, size, ls = 0) => [...s].reduce((a, ch) => a + cw(ch, size), 0) + ls * Math.max(0, [...s].length - 1);
 
-  // 單行置中，字距自動
   function centerLine(out, text, cx, baseline, size, color, ls) {
-    const chars = [...text];
     let x = cx - strW(text, size, ls) / 2;
-    for (const ch of chars) { out.push({ ch, x, y: baseline, size, color }); x += cw(ch, size) + ls; }
+    for (const ch of text) { out.push({ ch, x, y: baseline, size, color }); x += cw(ch, size) + ls; }
   }
 
-  function layoutUnit(out, text) {
+  // ---- 單位名稱 ----
+  function layoutUnit(out, unit, cfg, ink) {
+    if (!cfg || !unit) return;
+    const text = (cfg.tpl || '{unit}').replace('{unit}', unit);
+    const n = [...text].length;
+    let size = cfg.size;
+    let ls = cfg.type === 'pill'
+      ? (n <= 4 ? size * 0.35 : n <= 6 ? size * 0.15 : size * 0.05)
+      : (n <= 3 ? size * 0.25 : n <= 5 ? size * 0.08 : 0);
+    while (strW(text, size, ls) > cfg.maxW && size > cfg.size * 0.45) { size -= 2; ls = Math.min(ls, size * 0.05); }
+    if (strW(text, size, ls) > cfg.maxW) ls = 0;
+    centerLine(out, text, cfg.cx, cfg.cy + size * vCenter, size, cfg.color || ink, ls);
+  }
+
+  // ---- 姓名 ----
+  function layoutName(out, text, cfg, ink) {
     if (!text) return;
-    const c = CFG.unit; const n = [...text].length;
-    let size = c.size;
-    let ls = n <= 4 ? size * 0.35 : n <= 6 ? size * 0.15 : size * 0.05;
-    while (strW(text, size, ls) > c.maxW && size > c.minSize) { size -= 2; ls = Math.min(ls, size * 0.05); }
-    if (strW(text, size, ls) > c.maxW) ls = 0;
-    centerLine(out, text, c.cx, c.cy + size * vCenter, size, c.color, ls);
+    const n = [...text].length;
+    let size = cfg.size;
+    // 2 字寬鬆、3 字適中、4 字以上緊湊；過長自動縮小
+    let ls = n <= 2 ? size * (cfg.ls2 != null ? cfg.ls2 : 0.6) : n === 3 ? size * (cfg.ls3 != null ? cfg.ls3 : 0.15) : n === 4 ? size * 0.08 : size * 0.03;
+    const maxLs = (cfg.maxW - strW(text, size)) / Math.max(1, n - 1);
+    if (ls > maxLs) ls = Math.max(size * 0.04, maxLs);
+    while (strW(text, size, ls) > cfg.maxW && size > cfg.size * 0.5) { size -= 4; ls = Math.min(ls, size * 0.04); }
+    centerLine(out, text, cfg.cx, cfg.cy + size * vCenter, size, cfg.color || ink, ls);
   }
 
-  function layoutName(out, text) {
-    if (!text) return;
-    const c = CFG.name; const n = [...text].length;
-    let size = c.size;
-    // 2 字寬鬆、3 字適中、4 字以上緊湊（類似範本的字距效果）
-    let ls = n <= 2 ? size * 1.0 : n === 3 ? size * 0.55 : n === 4 ? size * 0.18 : size * 0.04;
-    while (strW(text, size, ls) > c.maxW && size > c.minSize) { size -= 4; ls = Math.min(ls, size * 0.04); }
-    centerLine(out, text, c.cx, c.cy + size * vCenter, size, c.color, ls);
-  }
-
-  // ---- 內文排版：自動換行 + 左右對齊 + 避頭尾 ----
+  // ---- 內文：自動換行 + 左右對齊(或置中) + 避頭尾 ----
   const NO_START = new Set([...'，。、；：？！」』）〕】》〉…～,.;:?!)']);
   const NO_END = new Set([...'「『（〔【《〈(']);
+  const WORD_RE = /[A-Za-z0-9][A-Za-z0-9.\-+#&'/]*|\s|./gu;
 
-  function bodyUnits(period, course, size) {
+  function tokens(str) { return str.match(WORD_RE) || []; }
+
+  function bodyUnits(cfg, periodText, course, size) {
     const units = [];
-    const push = (text, opts = {}) => units.push({ text, ...opts });
-    push('於');
-    if (period) {
-      // 期程可在「～」處換行，前後日期各自不拆
-      const [a, b] = period.split('～');
-      if (b) { push(a, { gapL: 0.3 }); push('～' + b, { gapR: 0.3 }); }
-      else push(period, { gapL: 0.3, gapR: 0.3 });
-    } else push('　'.repeat(8));
-    for (const ch of '完成「') push(ch);
-    if (course) {
-      // 課程名稱：中文逐字可換行，英文/數字單字不拆
-      for (const tok of course.match(/[A-Za-z0-9][A-Za-z0-9.\-+#&']*\s?|\s|./gu)) push(tok);
-    } else push('　'.repeat(6));
-    for (const ch of BODY_TAIL) push(ch);
+    const push = (text, o = {}) => units.push({ text, ...o });
+    const gap = cfg.periodGap != null ? cfg.periodGap : 0.12;
+    const parts = cfg.tpl.split(/(\{period\}|\{course\})/);
+    for (const p of parts) {
+      if (!p) continue;
+      if (p === '{period}') {
+        if (!periodText) { push('　'.repeat(8)); continue; }
+        const idx = periodText.search(/[～~至\-]/);
+        if (idx > 0) {
+          push(periodText.slice(0, idx), { gapL: gap });
+          push(periodText.slice(idx), { gapR: gap });
+        } else push(periodText, { gapL: gap, gapR: gap });
+      } else if (p === '{course}') {
+        if (!course) { push('　'.repeat(6)); continue; }
+        for (const t of tokens(course)) push(t);
+      } else {
+        for (const t of tokens(p)) push(t);
+      }
+    }
     for (const u of units) {
       u.w = strW(u.text, size) + ((u.gapL || 0) + (u.gapR || 0)) * size;
       u.first = [...u.text][0]; u.last = [...u.text].slice(-1)[0];
+      u.space = /^\s$/.test(u.text);
     }
     return units;
   }
 
-  function breakLines(units, size, width) {
-    const lines = []; let cur = []; let curW = 0; let avail = width - CFG.body.indent * size;
-    for (let i = 0; i < units.length; i++) {
-      const u = units[i];
+  function breakLines(units, size, width, indent) {
+    const lines = []; let cur = []; let curW = 0; let avail = width - indent * size;
+    for (const u of units) {
+      if (cur.length === 0 && u.space) continue; // 行首不留空白
       if (curW + u.w <= avail + 0.5 || cur.length === 0) { cur.push(u); curW += u.w; continue; }
-      // 避頭：標點不可在行首 → 把上一個單位帶到下一行
-      let carry = [];
+      const carry = [];
       if (NO_START.has(u.first) && cur.length > 1) carry.unshift(cur.pop());
-      // 避尾：開括號不可在行尾
       while (cur.length > 1 && NO_END.has(cur[cur.length - 1].last)) carry.unshift(cur.pop());
+      while (cur.length && cur[cur.length - 1].space) cur.pop();
       lines.push({ units: cur, avail });
       cur = [...carry, u]; curW = cur.reduce((a, x) => a + x.w, 0); avail = width;
     }
@@ -117,28 +117,35 @@
     return lines;
   }
 
-  function layoutBody(out, period, course) {
-    const c = CFG.body; const width = c.right - c.left;
-    let size = c.size, lines;
-    for (;;) {
-      lines = breakLines(bodyUnits(period, course, size), size, width);
-      if (lines.length <= 3 || size <= c.minSize) break;
+  function layoutBody(out, cfg, periodText, course, ink) {
+    const width = cfg.right - cfg.left;
+    const center = cfg.align === 'center';
+    const indent = center ? 0 : (cfg.indent || 0);
+    const maxLines = cfg.maxLines || 4;
+    let size = cfg.size, lines;
+    for (;;) { // 超過預定行數時，字級最多縮小 15%
+      lines = breakLines(bodyUnits(cfg, periodText, course, size), size, width, indent);
+      if (lines.length <= maxLines || size <= cfg.size * 0.85) break;
       size -= 1;
     }
-    const lh = size * c.lineGap * (lines.length > 3 ? 0.97 : 1);
+    const lh = cfg.size * cfg.lineGap * (size / cfg.size);
+    const color = cfg.color || ink;
     lines.forEach((ln, li) => {
-      const y = c.baseline1 + li * lh;
-      const x0 = c.left + (li === 0 ? c.indent * size : 0);
+      const y = cfg.baseline1 + li * lh;
       const used = ln.units.reduce((a, u) => a + u.w, 0);
-      // 左右對齊：除最後一行，把剩餘空間平均分到每個單位之間
-      const gaps = ln.units.length - 1;
-      let extra = (!ln.last && gaps > 0) ? (ln.avail - used) / gaps : 0;
-      if (extra > size * 0.6) extra = 0; // 異常時不拉伸
-      let x = x0;
+      let x, extra = 0;
+      if (center) {
+        x = cfg.left + (width - used) / 2;
+      } else {
+        x = cfg.left + (li === 0 ? indent * size : 0);
+        const gaps = ln.units.length - 1;
+        extra = (!ln.last && gaps > 0) ? (ln.avail - used) / gaps : 0;
+        if (extra > size * 0.6) extra = 0;
+      }
       for (const u of ln.units) {
         x += (u.gapL || 0) * size;
         for (const ch of u.text) {
-          if (ch !== '　') out.push({ ch, x, y, size, color: c.color });
+          if (ch !== '　' && ch.trim()) out.push({ ch, x, y, size, color });
           x += cw(ch, size);
         }
         x += (u.gapR || 0) * size + extra;
@@ -146,23 +153,40 @@
     });
   }
 
-  function layoutIssue(out, roc) {
-    if (!roc) return;
-    const c = CFG.issue;
-    const t = `民國${roc.y}年${roc.m}月${roc.d}日`;
-    centerLine(out, t, c.cx, c.baseline, c.size, c.color, c.size * 0.18);
+  // ---- 發證日期 ----
+  const p2 = (n) => String(n).padStart(2, '0');
+  function layoutIssue(out, roc, cfg, ink) {
+    if (!roc || !cfg) return;
+    const color = cfg.color || ink;
+    const m = cfg.pad ? p2(roc.m) : String(roc.m);
+    const d = cfg.pad ? p2(roc.d) : String(roc.d);
+    const ls = (cfg.ls || 0) * cfg.size;
+    if (cfg.fmt === 'roc') return centerLine(out, `民國${roc.y}年${roc.m}月${roc.d}日`, cfg.cx, cfg.baseline, cfg.size, color, ls);
+    if (cfg.fmt === 'ymd') return centerLine(out, `${roc.y}年${m}月${d}日`, cfg.cx, cfg.baseline, cfg.size, color, ls);
+    if (cfg.fmt === 'full') return centerLine(out, `中華民國${roc.y}年${p2(roc.m)}月${p2(roc.d)}日`, cfg.cx, cfg.baseline, cfg.size, color, ls);
+    // spread / spreadChars：平均分散在 x0 ~ x1
+    const parts = cfg.fmt === 'spreadChars'
+      ? [...`中華民國${roc.y}年${p2(roc.m)}月${p2(roc.d)}日`]
+      : ['中', '華', '民', '國', String(roc.y), '年', p2(roc.m), '月', p2(roc.d), '日'];
+    const ws = parts.map((t) => strW(t, cfg.size));
+    const gap = (cfg.x1 - cfg.x0 - ws.reduce((a, b) => a + b, 0)) / (parts.length - 1);
+    let x = cfg.x0;
+    parts.forEach((t, i) => {
+      for (const ch of t) { out.push({ ch, x, y: cfg.baseline, size: cfg.size, color }); x += cw(ch, cfg.size); }
+      x += gap;
+    });
   }
 
-  function layoutCertificate(d) {
+  function layoutCertificate(d, course) {
     const out = [];
-    layoutUnit(out, (d.unit || '').trim());
-    layoutName(out, (d.name || '').trim());
-    layoutBody(out, d.periodText || '', (d.course || '').trim());
-    layoutIssue(out, d.issue);
+    const ink = course.ink || '#000000';
+    layoutUnit(out, (d.unit || '').trim(), course.unit, ink);
+    layoutName(out, (d.name || '').trim(), course.name, ink);
+    layoutBody(out, course.body, d.periodText || '', (d.course || '').trim(), ink);
+    layoutIssue(out, d.issue, course.issue, ink);
     return out;
   }
 
-  // canvas 繪製（預覽與縮圖用）
   function drawGlyphs(c, glyphs, scale) {
     c.textBaseline = 'alphabetic';
     let lastFont = '', lastColor = '';
@@ -174,5 +198,5 @@
     }
   }
 
-  global.CertLayout = { W, H, FONT, FALLBACK, CFG, layoutCertificate, drawGlyphs, measureMetrics, fontStr };
+  global.CertLayout = { FONT, FALLBACK, layoutCertificate, drawGlyphs, measureMetrics, fontStr };
 })(window);

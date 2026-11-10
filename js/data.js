@@ -55,7 +55,19 @@
   }
 
   const rocText = (d) => d ? `民國${d.y}年${d.m}月${d.d}日` : '';
-  const periodText = (p) => p ? `${rocText(p.from)}～${rocText(p.to)}` : '';
+  const pad2 = (n) => String(n).padStart(2, '0');
+  // 依課程設定格式化授課期程
+  function periodText(p, spec) {
+    if (!p) return '';
+    spec = spec || { style: 'cjk', pad: false, sep: '～', yr2: true, prefix: '民國' };
+    const f = (d, withYear) => {
+      const m = spec.pad ? pad2(d.m) : d.m, dd = spec.pad ? pad2(d.d) : d.d;
+      if (spec.style === 'slash') return withYear ? `${d.y}/${m}/${dd}` : `${m}/${dd}`;
+      return withYear ? `${spec.prefix || ''}${d.y}年${m}月${dd}日` : `${m}月${dd}日`;
+    };
+    const yr2 = spec.yr2 !== false || p.from.y !== p.to.y;
+    return `${f(p.from, true)}${spec.sep || '～'}${f(p.to, yr2)}`;
+  }
 
   // 手動姓名：換行、逗號、頓號、空白皆可分隔
   function parseNames(text) {

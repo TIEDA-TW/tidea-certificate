@@ -13,7 +13,21 @@
     busy: false,
     cancel: false,
   };
-  const assets = { fontBytes: null, bgBytes: null, cmap: null, bgImg: null };
+  const assets = { fontBytes: null, cmap: null };
+  const bgBytesCache = new Map();   // 課程 id → 高解析底圖 (PDF 用)
+  const bgImgCache = new Map();     // 課程 id → 預覽底圖 Image
+  const COURSE_KEY = 'cert-course-v1';
+  try { state.courseId = localStorage.getItem(COURSE_KEY) || 'minecraft'; } catch (e) { state.courseId = 'minecraft'; }
+  const course = () => window.getCourse(state.courseId);
+  function previewImg(c) {
+    let im = bgImgCache.get(c.id);
+    if (!im) { im = new Image(); im.onload = () => schedulePreview(); im.src = c.preview; bgImgCache.set(c.id, im); }
+    return im;
+  }
+  async function bgBytesFor(c) {
+    if (!bgBytesCache.has(c.id)) bgBytesCache.set(c.id, fetch(c.bg).then((r) => { if (!r.ok) throw new Error('底圖載入失敗'); return r.arrayBuffer(); }));
+    return bgBytesCache.get(c.id);
+  }
 
   // ---------- 資產載入 ----------
   const scriptCache = {};
@@ -43,9 +57,7 @@
   async function init() {
     const st = $('fontStatus');
     // 預覽底圖
-    assets.bgImg = new Image();
-    assets.bgImg.src = 'assets/bg-preview.jpg';
-    assets.bgImg.onload = () => schedulePreview();
+    previewImg(course());
     try {
       const [fontBuf, cmap] = await Promise.all([
         fetchWithProgress('assets/font.ttf', (p) => { st.textContent = `字型載入中 ${Math.round(p * 100)}%`; }),
@@ -65,7 +77,7 @@
       const idle = window.requestIdleCallback || ((f) => setTimeout(f, 800));
       idle(() => {
         loadScript('vendor/pdf-lib.min.js'); loadScript('vendor/fontkit.umd.min.js');
-        fetch('assets/bg.jpg').then((r) => r.arrayBuffer()).then((b) => { assets.bgBytes = b; });
+        bgBytesFor(course()).catch(() => {});
       });
     } catch (e) {
       console.error(e);
@@ -89,20 +101,21 @@
     return (v instanceof Date || typeof v === 'number' || String(v).trim() !== '') ? v : commonVal;
   }
   function record(i) {
-    const c = common(); const r = rows()[i] || { name: '' };
+    const c = common(); const r = rows()[i] || { name: '' }; const cs = course();
     const period = D.parsePeriod(pick(r.period, c.period));
     const issue = D.parseDate(pick(r.issue, c.issue));
     return {
       name: String(r.name || ''),
       unit: String(pick(r.unit, c.unit) || '').trim(),
-      course: String(pick(r.course, c.course) || '').trim(),
-      period, periodText: D.periodText(period), issue,
+      course: cs.course || String(pick(r.course, c.course) || '').trim(),
+      period, periodText: D.periodText(period, cs.period), issue,
       rawPeriod: pick(r.period, c.period), rawIssue: pick(r.issue, c.issue),
     };
   }
   function problems(rec) {
     const p = [];
-    if (!rec.unit) p.push('單位名稱未填');
+    const cs = course();
+    if (!rec.unit && cs.unit) p.push('單位名稱未填');
     if (!rec.course) p.push('課程名稱未填');
     if (!rec.period) p.push(rec.rawPeriod ? '授課期程格式無法辨識' : '授課期程未填');
     if (!rec.issue) p.push(rec.rawIssue ? '發證日期格式無法辨識' : '發證日期未填');
@@ -121,17 +134,20 @@
     const cssW = cv.clientWidth || 800;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = Math.min(Math.round(cssW * dpr), 2000);
-    const h = Math.round(w * L.H / L.W);
-    if (cv.width !== w) { cv.width = w; cv.height = h; }
+    const cs = course();
+    const h = Math.round(w * cs.H / cs.W);
+    cv.style.aspectRatio = `${cs.W} / ${cs.H}`;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     const c = cv.getContext('2d');
     c.fillStyle = '#fff'; c.fillRect(0, 0, w, h);
-    if (assets.bgImg && assets.bgImg.complete && assets.bgImg.naturalWidth) c.drawImage(assets.bgImg, 0, 0, w, h);
+    const bgi = previewImg(cs);
+    if (bgi.complete && bgi.naturalWidth) c.drawImage(bgi, 0, 0, w, h);
     const list = rows();
     const n = list.length;
     if (state.current >= n) state.current = Math.max(0, n - 1);
     const rec = n ? record(state.current) : { ...record(-1), name: '' };
     if (!n) rec.name = '';
-    if (state.ready) L.drawGlyphs(c, L.layoutCertificate(rec), w / L.W);
+    if (state.ready) L.drawGlyphs(c, L.layoutCertificate(rec, cs), w / cs.W);
     $('pvIndex').textContent = n ? `${state.current + 1} / ${n}` : '0 / 0';
     $('previewWho').textContent = n ? `— ${rec.name}` : '— 尚未輸入學生';
     const warns = n ? problems(rec) : ['請先輸入或匯入學生姓名'];
@@ -156,13 +172,13 @@
   }
 
   // ---------- 輸出 ----------
-  const fileBase = (rec) => ['結業證書', D.safeName(rec.unit), D.safeName(rec.course)].filter(Boolean).join('_');
+  const fileBase = (rec) => ['結業證書', D.safeName(rec.unit), D.safeName(rec.course || course().short)].filter(Boolean).join('_');
 
   async function ensurePdfReady() {
     if (!state.ready) throw new Error('字型尚未載入完成，請稍候');
     await Promise.all([loadScript('vendor/pdf-lib.min.js'), loadScript('vendor/fontkit.umd.min.js')]);
-    if (!assets.bgBytes) assets.bgBytes = await fetch('assets/bg.jpg').then((r) => r.arrayBuffer());
     P.setAssets(assets);
+    return bgBytesFor(course());
   }
 
   function showProgress(text, ratio) {
@@ -211,10 +227,10 @@
     if (!checkAll([i])) return;
     run(async () => {
       showProgress('準備中…', 0.1);
-      await ensurePdfReady();
+      const bgB = await ensurePdfReady(); const cs = course();
       const rec = record(i);
       showProgress(`產生 ${rec.name} 的證書…`, 0.5); await tick();
-      const bytes = await P.buildDoc([L.layoutCertificate(rec)]);
+      const bytes = await P.buildDoc([L.layoutCertificate(rec, cs)], cs, bgB);
       deliver(new Blob([bytes], { type: 'application/pdf' }), `${fileBase(rec)}_${D.safeName(rec.name)}.pdf`);
     });
   }
@@ -226,9 +242,9 @@
     if (!checkAll(idx)) return;
     run(async () => {
       showProgress('準備中…', 0.02);
-      await ensurePdfReady();
-      const pages = idx.map((i) => L.layoutCertificate(record(i)));
-      const bytes = await P.buildDoc(pages, async (p) => {
+      const bgB = await ensurePdfReady(); const cs = course();
+      const pages = idx.map((i) => L.layoutCertificate(record(i), cs));
+      const bytes = await P.buildDoc(pages, cs, bgB, async (p) => {
         if (state.cancel) throw new Error('cancel');
         if (p % 3 === 0) { showProgress(`排版中 ${p + 1} / ${n}`, (p + 1) / n * 0.9); await tick(); }
       });
@@ -246,14 +262,14 @@
     if (!checkAll(idx)) return;
     run(async () => {
       showProgress('準備中…', 0.02);
-      await Promise.all([ensurePdfReady(), loadScript('vendor/jszip.min.js')]);
+      const [bgB] = await Promise.all([ensurePdfReady(), loadScript('vendor/jszip.min.js')]); const cs = course();
       const zip = new JSZip();
       const used = new Set();
       for (const i of idx) {
         if (state.cancel) throw new Error('cancel');
         const rec = record(i);
         showProgress(`產生 ${i + 1} / ${n}：${rec.name}`, i / n * 0.92); await tick();
-        const bytes = await P.buildDoc([L.layoutCertificate(rec)]);
+        const bytes = await P.buildDoc([L.layoutCertificate(rec, cs)], cs, bgB);
         let fn = `${fileBase(rec)}_${D.safeName(rec.name)}`;
         let k = 2; while (used.has(fn)) fn = `${fileBase(rec)}_${D.safeName(rec.name)}(${k++})`;
         used.add(fn);
@@ -317,7 +333,7 @@
     names: { t: '學生姓名填寫說明', b: `<p>一次可輸入多位學生，每行一位最清楚：</p><pre>王小明\n陳美美\n林大同</pre><p>也可用逗號、頓號或空白分隔：</p><pre>王小明、陳美美、林大同</pre><ul><li>姓名 2～3 字會自動拉開字距；4 字以上（含外籍姓名）自動縮小字級。</li><li>罕用字若字型沒有，會以系統明體補字並提示。</li></ul>`, ex: () => { $('namesInput').value = '王小明\n陳美美\n林大同\n歐陽小琪'; onNames(); } },
     unit: { t: '單位名稱填寫說明', b: `<p>顯示在 Minecraft 標誌右側綠色框內（白字）。</p><pre>喵喵國小</pre><pre>喵星人程式補習班</pre><p>字數多時會自動縮小以放入綠框。</p>`, ex: () => { $('unitInput').value = '喵喵國小'; onCommon(); } },
     period: { t: '授課期程填寫說明', b: `<p>同一批學生共用。可用民國或西元，以下寫法皆可：</p><pre>115/3/1~115/6/30\n115.3.1-115.6.30\n115年3月1日至115年6月30日\n115/3/1~6/30（同年可省略）\n2026/3/1~2026/6/30</pre><p>證書上統一印成：<br><b>民國115年3月1日～民國115年6月30日</b></p>`, ex: () => { $('periodInput').value = '115/3/1~115/6/30'; onCommon(); } },
-    course: { t: '課程名稱填寫說明', b: `<p>會套印在內文「　」中，內文會依名稱長短自動換行、左右對齊。</p><pre>Minecraft 程式設計進階班</pre><pre>麥塊創意程式設計</pre>`, ex: () => { $('courseInput').value = 'Minecraft 程式設計進階班'; onCommon(); } },
+    course: { t: '課程名稱填寫說明', get b() { const cs = course(); return cs.course ? `<p>「${esc(cs.label)}」證書的課程名稱已固定寫在內文中：</p><pre>${esc(cs.course)}</pre><p>不需填寫。若要改套其他課程名稱，請在上方切換證書種類。</p>` : `<p>會套印在內文中，內文會依名稱長短自動換行、左右對齊。</p><pre>${esc((cs.sample && cs.sample.course) || 'Minecraft 程式設計進階班')}</pre>`; }, ex: () => { const cs = course(); if (!cs.course) { $('courseInput').value = (cs.sample && cs.sample.course) || ''; onCommon(); } } },
     issue: { t: '發證日期填寫說明', b: `<p>印在理事長簽名下方。民國或西元皆可：</p><pre>115/6/30\n115年6月30日\n2026-06-30</pre><p>證書上印成：<b>民國115年6月30日</b>；按「今天」可快速帶入今日日期。</p>`, ex: () => { $('issueInput').value = '115/6/30'; onCommon(); } },
     file: { t: 'CSV / Excel 檔案格式', b: `<p>第一列為欄位名稱，只有「姓名」必填：</p><table><tr><th>姓名</th><th>單位名稱</th><th>授課期程</th><th>課程名稱</th><th>發證日期</th></tr><tr><td>王小明</td><td>喵喵國小</td><td>115/3/1~115/6/30</td><td>Minecraft 進階班</td><td>115/6/30</td></tr><tr><td>陳美美</td><td></td><td></td><td></td><td></td></tr></table><ul><li>其他欄位留空，會使用畫面上「課程資料」的共用值。</li><li>若某位學生需要不同課程或日期，就在那一列填寫即可覆蓋。</li><li>支援 .csv（UTF-8 或 Big5）、.xlsx、.xls。</li><li>沒有欄位名稱時，第一欄視為姓名。</li></ul>` },
   };
@@ -336,13 +352,15 @@
     const pp = $('periodParsed'), ip = $('issueParsed');
     const pv = $('periodInput').value.trim(), iv = $('issueInput').value.trim();
     const p = D.parsePeriod(pv), d = D.parseDate(iv);
-    pp.textContent = pv ? (p ? '→ ' + D.periodText(p) : '⚠︎ 無法辨識，請參考 ? 說明') : '';
+    pp.textContent = pv ? (p ? '→ ' + D.periodText(p, course().period) : '⚠︎ 無法辨識，請參考 ? 說明') : '';
     pp.className = 'hint parsed ' + (pv ? (p ? 'ok' : 'bad') : '');
     ip.textContent = iv ? (d ? '→ ' + D.rocText(d) : '⚠︎ 無法辨識，請參考 ? 說明') : '';
     ip.className = 'hint parsed ' + (iv ? (d ? 'ok' : 'bad') : '');
   }
   let listTimer = 0;
-  function onCommon() { updateParsed(); schedulePreview(); clearTimeout(listTimer); listTimer = setTimeout(renderList, 250); saveDraft(); }
+  function onCommon() {
+    const cs = course(); if (cs.unit && cs.unit.tpl) $('unitHint').textContent = `會印成「${cs.unit.tpl.replace('{unit}', $('unitInput').value.trim() || 'XX國小')}」`;
+    updateParsed(); schedulePreview(); clearTimeout(listTimer); listTimer = setTimeout(renderList, 250); saveDraft(); }
   function onNames() {
     state.manualNames = D.parseNames($('namesInput').value);
     clearTimeout(listTimer); listTimer = setTimeout(renderList, 120);
@@ -356,7 +374,7 @@
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         names: $('namesInput').value, unit: $('unitInput').value, period: $('periodInput').value,
-        course: $('courseInput').value, issue: $('issueInput').value,
+        course: $('courseInput').disabled ? ($('courseInput').dataset.user || '') : $('courseInput').value, issue: $('issueInput').value,
       }));
     } catch (e) { /* 忽略 */ }
   }
@@ -366,6 +384,35 @@
       $('namesInput').value = d.names || ''; $('unitInput').value = d.unit || ''; $('periodInput').value = d.period || '';
       $('courseInput').value = d.course || ''; $('issueInput').value = d.issue || '';
     } catch (e) { /* 忽略 */ }
+  }
+
+  // ---------- 證書種類 ----------
+  function applyCourse() {
+    const cs = course();
+    $('courseSelect').value = cs.id;
+    const ci = $('courseInput');
+    if (cs.course) {
+      if (!ci.disabled) ci.dataset.user = ci.value;
+      ci.value = cs.course; ci.disabled = true;
+      $('courseHint').textContent = '此證書的課程名稱已固定，不需填寫';
+    } else {
+      if (ci.disabled) ci.value = ci.dataset.user || '';
+      ci.disabled = false;
+      ci.placeholder = '例：' + ((cs.sample && cs.sample.course) || '');
+      $('courseHint').textContent = '';
+    }
+    $('unitLabel').textContent = cs.unitLabel || '單位名稱';
+    $('unitHint').textContent = !cs.unit ? '此證書不印單位名稱（只用於檔名）'
+      : cs.unit.tpl ? `會印成「${cs.unit.tpl.replace('{unit}', $('unitInput').value.trim() || 'XX國小')}」` : '';
+    updateParsed();
+    renderList();
+  }
+  function setCourse(id) {
+    state.courseId = window.getCourse(id).id;
+    try { localStorage.setItem(COURSE_KEY, state.courseId); } catch (e) { /* 忽略 */ }
+    previewImg(course());
+    applyCourse();
+    if (state.ready) { const idle = window.requestIdleCallback || ((f) => setTimeout(f, 500)); idle(() => bgBytesFor(course()).catch(() => {})); }
   }
 
   function setTab(t) {
@@ -378,6 +425,9 @@
   }
 
   function bind() {
+    const sel = $('courseSelect');
+    sel.innerHTML = window.CERT_COURSES.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join('');
+    sel.addEventListener('change', () => setCourse(sel.value));
     document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
     $('namesInput').addEventListener('input', onNames);
     ['unitInput', 'periodInput', 'courseInput', 'issueInput'].forEach((id) => $(id).addEventListener('input', onCommon));
@@ -413,8 +463,7 @@
   loadDraft();
   bind();
   state.manualNames = D.parseNames($('namesInput').value);
-  updateParsed();
-  renderList();
+  applyCourse();
   init();
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
