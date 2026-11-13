@@ -132,6 +132,16 @@
       course: '麥塊AI科學實驗王',
     },
     {
+      id: 'mc-world', label: '麥塊AI世界冒險王', short: '麥塊AI世界冒險王',
+      W: 3580, H: 2552, ink: B,
+      name: { cx: 1788, cy: 1046, maxW: 1100, size: 175 },
+      body: { left: 762, right: 2820, maxLines: 3, baseline1: 1466, size: 70, lineGap: 1.2, indent: 1.4,
+        tpl: '於{period}完成「麥塊AI世界冒險王」課程，積極學習、勇於探索，展現科學創意與解決問題的能力，表現優異，特頒此狀，以茲鼓勵！' },
+      issue: { fmt: 'ymd', pad: false, cx: 1042, baseline: 1985, size: 64, ls: 0.15 },
+      period: { style: 'cjk', pad: false, sep: '至', yr2: true },
+      course: '麥塊AI世界冒險王',
+    },
+    {
       id: 'mc-redstone', label: '麥塊紅石 ChatGPT 魔法營', short: '麥塊紅石ChatGPT魔法營',
       W: 3580, H: 2552, ink: B,
       name: { cx: 1790, cy: 1054, maxW: 1100, size: 185 },
